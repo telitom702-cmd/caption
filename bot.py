@@ -5,25 +5,26 @@ from pathlib import Path
 from pyrogram import Client, idle
 import time
 import asyncio
-from aiohttp import web
+import os  # PORT এর জন্য os মডিউল জরুরি
 import logging
+from aiohttp import web as aiohttp_web  # নামের দ্বন্দ্ব এড়াতে alias ব্যবহার করা হলো
 
 # লগিং সেটআপ
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ১. কনফিগারেশন ইম্পোর্ট (আপনার info.py থেকে)
+# ১. কনফিগারেশন ইম্পোর্ট
 from info import *
 
-# ২. প্লাগিন ফোল্ডার থেকে ওয়েব সার্ভার ইম্পোর্ট (যদি plugins/web_server.py থাকে)
+# ২. ওয়েব সার্ভার ফাংশন ইম্পোর্ট
+# সরাসরি ফাংশনটি ইম্পোর্ট করছি যাতে 'module' এরর না আসে
 try:
-    from plugins import web_server
+    from plugins.web_server import web_server as start_web_app
 except ImportError:
     logger.warning("web_server plugin not found or error importing.")
-    web_server = None
+    start_web_app = None
 
-# ৩. বট ক্লায়েন্ট সেটআপ (Pyrogram)
-# নোট: dreamxbotz ফোল্ডার না থাকায় আমরা সরাসরি এখানে ক্লায়েন্ট তৈরি করছি
+# ৩. বট ক্লায়েন্ট সেটআপ
 app = Client(
     "DreamxBotz",
     api_id=API_ID,
@@ -45,7 +46,6 @@ async def start_bot():
     
     # প্লাগিন অটোমেটিক লোড করা
     for name in files:
-        # __init__.py বা অনাকাঙ্ক্ষিত ফাইল বাদ দেওয়া
         if "__init__" in name:
             continue
             
@@ -54,7 +54,6 @@ async def start_bot():
             plugin_name = patt.stem.replace(".py", "")
             plugins_dir = Path(f"plugins/{plugin_name}.py")
             
-            # যদি ফাইলটি আসলেই exists করে
             if plugins_dir.exists():
                 import_path = "plugins.{}".format(plugin_name)
                 try:
@@ -67,17 +66,27 @@ async def start_bot():
                     logger.error(f"Failed to load plugin {plugin_name}: {e}")
 
     # ওয়েব সার্ভার শুরু করা (Render-এর জন্য জরুরি)
-    if web_server:
+    if start_web_app:
         try:
-            # web_server ফাংশনটি একটি app রিটার্ন করে কিনা চেক করতে হবে
-            # সাধারণত এটি একটি aiohttp web.Application রিটার্ন করে
-            app_runner = web.AppRunner(await web_server()) 
-            await app_runner.setup()
-            bind_address = "0.0.0.0"
-            await web.TCPSite(app_runner, bind_address, PORT).start()
-            logger.info(f"Web Server started on http://{bind_address}:{PORT}")
+            # Render বা অন্যান্য হোস্টিং এর জন্য PORT এনভায়রনমেন্ট ভেরিয়েবল ব্যবহার করা উচিত
+            port = int(os.environ.get("PORT", 8080))
+            
+            # web_server.py থেকে অ্যাপ অবজেক্ট পাওয়া
+            web_app = await start_web_app()
+            
+            # aiohttp রানার সেটআপ
+            runner = aiohttp_web.AppRunner(web_app)
+            await runner.setup()
+            
+            # সার্ভার শুরু করা
+            site = aiohttp_web.TCPSite(runner, '0.0.0.0', port)
+            await site.start()
+            
+            logger.info(f"Web Server started on http://0.0.0.0:{port}")
         except Exception as e:
             logger.error(f"Web Server failed to start: {e}")
+    else:
+        logger.warning("Web server function not available. Skipping web server start.")
     
     logger.info("Bot is now running and listening for messages...")
     await idle()
