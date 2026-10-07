@@ -1,0 +1,10 @@
+pyrogram
+tgcrypto
+motor
+aiohttp
+dnspython
+Pillow
+pytz
+requests
+bs4
+imdbpy
