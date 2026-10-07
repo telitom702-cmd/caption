@@ -1,5 +1,5 @@
 from pyrogram import Client, filters
-
+from pyrogram.enums import ParseMode
 
 @Client.on_message(
     filters.private & filters.command("start")
@@ -9,5 +9,5 @@ async def start_command(client, message):
         "🤖 <b>DreamxBotz is Running!</b>\n\n"
         "✅ Bot is online and working.\n"
         "🚀 Ready to receive your commands.",
-        parse_mode="html"
+        parse_mode=ParseMode.HTML
     )
