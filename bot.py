@@ -1,8 +1,6 @@
 import asyncio
-import importlib
 import logging
 import os
-import pkgutil
 import time
 
 from aiohttp import web
@@ -22,37 +20,11 @@ app = Client(
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
+    plugins={"root": "plugins"},
     workdir="."
 )
 
 botStartTime = time.time()
-
-
-def load_plugins():
-    """plugins package-এর সব Python plugin load করবে."""
-    try:
-        import plugins
-
-        for module_info in pkgutil.iter_modules(plugins.__path__):
-            module_name = module_info.name
-
-            if module_name.startswith("_"):
-                continue
-
-            full_name = f"plugins.{module_name}"
-
-            try:
-                importlib.import_module(full_name)
-                LOGGER.info("Plugin imported => %s", full_name)
-
-            except Exception:
-                LOGGER.exception(
-                    "Failed to load plugin => %s",
-                    full_name
-                )
-
-    except Exception:
-        LOGGER.exception("Failed to load plugins package")
 
 
 async def create_web_app():
@@ -102,9 +74,6 @@ async def start_bot():
         raise RuntimeError(
             "BOT_TOKEN environment variable is missing!"
         )
-
-    # Plugin আগে load করা হবে
-    load_plugins()
 
     # তারপর bot start
     await app.start()
