@@ -6,5 +6,5 @@ dnspython
 Pillow
 pytz
 requests
-bs4
-imdbpy
+beautifulsoup4
+IMDbPY
