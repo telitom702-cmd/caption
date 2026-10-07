@@ -1,6 +1,7 @@
 import logging
 import re
 from datetime import datetime
+from html import escape
 
 from pyrogram import Client, enums, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -10,19 +11,12 @@ from info import ADMINS
 # ডিবাগ লগিং সিস্টেম মুছে ফেলা হয়েছে, শুধুমাত্র লগার নেওয়া হয়েছে
 LOGGER = logging.getLogger(__name__)
 
-# সমস্যা ১: ইম্পোর্ট পাথ ঠিক করা হয়েছে 
-# যদি আপনার database.py ফাইলটি plugins/ ফোল্ডারে থাকে, তবে নিচের লাইনটি ব্যবহার করুন:
 from plugins.database.database import db
-# যদি আলাদা ফোল্ডার থাকে (plugins/database/database.py), তবে: from plugins.database.database import db
 
 COLLECTION_NAME = "auto_cleaner"
 CLEANER_STATE = {}
-
-try:
-    cleaner_col = db.db[COLLECTION_NAME]
-    LOGGER.info("Database collection initialized successfully.")
-except Exception as e:
-    LOGGER.error("Failed to initialize database collection: %s", e)
+cleaner_col = db.db[COLLECTION_NAME]
+LOGGER.info("Database collection initialized successfully.")
 
 DEFAULT_SETTINGS = {
     "_id": "settings",
@@ -60,8 +54,10 @@ async def update_settings(data):
             upsert=True
         )
         LOGGER.info("Settings updated successfully.")
+        return True
     except Exception as e:
         LOGGER.error("Error in update_settings: %s", e)
+        return False
 
 
 async def is_enabled():
@@ -92,12 +88,14 @@ async def add_remove_text(text):
 
 async def delete_remove_text(text):
     try:
-        await cleaner_col.update_one(
+        result = await cleaner_col.update_one(
             {"_id": "settings"},
             {"$pull": {"remove_texts": text}}
         )
+        return result.modified_count > 0
     except Exception as e:
         LOGGER.error("Error in delete_remove_text: %s", e)
+        return False
 
 
 def clean_text(text, remove_texts):
@@ -255,14 +253,18 @@ async def cleaner_callback(client, query):
 
     if data == "ac_toggle":
         settings = await get_settings()
-        await update_settings({"enabled": not settings.get("enabled", False)})
-        await query.answer("Toggled!")
-        LOGGER.info("Cleaner toggled by %s", user_id)
+        if await update_settings({"enabled": not settings.get("enabled", False)}):
+            await query.answer("Toggled!")
+            LOGGER.info("Cleaner toggled by %s", user_id)
+        else:
+            await query.answer("Could not save settings.", show_alert=True)
 
     elif data == "ac_caption":
         settings = await get_settings()
-        await update_settings({"caption_cleaner": not settings.get("caption_cleaner", True)})
-        await query.answer("Toggled!")
+        if await update_settings({"caption_cleaner": not settings.get("caption_cleaner", True)}):
+            await query.answer("Toggled!")
+        else:
+            await query.answer("Could not save settings.", show_alert=True)
 
     elif data == "ac_add":
         CLEANER_STATE[user_id] = "add"
@@ -292,8 +294,10 @@ async def cleaner_callback(client, query):
         
         texts = await get_remove_texts()
         if 0 <= index < len(texts):
-            await delete_remove_text(texts[index])
-            await query.answer("Deleted!")
+            if await delete_remove_text(texts[index]):
+                await query.answer("Deleted!")
+            else:
+                await query.answer("Could not delete text.", show_alert=True)
         else:
             await query.answer("Not found!", show_alert=True)
 
@@ -332,13 +336,14 @@ async def cleaner_text_input(client, message):
         return
 
     success = await add_remove_text(value)
-    if success:
-        LOGGER.info("Text added by %s: %s", user_id, value)
-    
     CLEANER_STATE.pop(user_id, None)
+    if not success:
+        await message.reply_text("❌ Could not save the text. Please try again.")
+        return
 
+    LOGGER.info("Text added by %s: %s", user_id, value)
     await message.reply_text(
-        f"✅ Added: <code>{value}</code>",
+        f"✅ Added: <code>{escape(value)}</code>",
         parse_mode=enums.ParseMode.HTML
     )
     await message.reply_text(
