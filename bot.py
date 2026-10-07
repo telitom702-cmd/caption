@@ -1,12 +1,11 @@
 import asyncio
 import logging
 import os
-import time
 
 from aiohttp import web
 from pyrogram import Client, idle
 
-from info import API_ID, API_HASH, BOT_TOKEN, SESSION
+from info import API_ID, API_HASH, BOT_TOKEN, DATABASE_URI, SESSION
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,100 +13,87 @@ logging.basicConfig(
 )
 
 LOGGER = logging.getLogger(__name__)
-
-app = Client(
-    SESSION, # হার্ডকোড না করে info.py থেকে নেওয়া হয়েছে
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-    plugins={"root": "plugins"},
-    workdir="."
-)
-
-botStartTime = time.time()
+app = None
 
 
 async def create_web_app():
-    """Render health-check web server."""
+    """Create the Render health-check web application."""
     web_app = web.Application()
 
     async def health_check(request):
-        return web.Response(
-            text="DreamxBotz is running!",
-            content_type="text/plain"
-        )
+        return web.Response(text="DreamxBotz is running!", content_type="text/plain")
 
     web_app.router.add_get("/", health_check)
     web_app.router.add_get("/health", health_check)
-
     return web_app
 
 
 async def start_web_server():
     port = int(os.environ.get("PORT", "8080"))
-
     web_app = await create_web_app()
-
     runner = web.AppRunner(web_app)
-    await runner.setup()
+    try:
+        await runner.setup()
+        site = web.TCPSite(runner, host="0.0.0.0", port=port)
+        await site.start()
+    except Exception:
+        await runner.cleanup()
+        raise
 
-    site = web.TCPSite(
-        runner,
-        host="0.0.0.0",
-        port=port
-    )
-
-    await site.start()
-
-    LOGGER.info(
-        "Web Server started on 0.0.0.0:%s",
-        port
-    )
-
+    LOGGER.info("Web Server started on 0.0.0.0:%s", port)
     return runner
 
 
 async def start_bot():
+    global app
     LOGGER.info("Initializing DreamxBotz...")
 
+    missing = []
+    if API_ID <= 0:
+        missing.append("API_ID")
+    if not API_HASH:
+        missing.append("API_HASH")
     if not BOT_TOKEN:
+        missing.append("BOT_TOKEN")
+    if not DATABASE_URI:
+        missing.append("DATABASE_URI")
+    if missing:
         raise RuntimeError(
-            "BOT_TOKEN environment variable is missing!"
+            "Missing required environment variables: " + ", ".join(missing)
         )
 
-    # তারপর bot start
-    await app.start()
-
-    bot_info = await app.get_me()
-
-    LOGGER.info(
-        "Bot started: %s (@%s)",
-        bot_info.first_name,
-        bot_info.username
+    app = Client(
+        SESSION,
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        plugins={"root": "plugins"},
+        workdir=".",
     )
 
-    # Render web server
-    runner = await start_web_server()
-
-    LOGGER.info(
-        "Bot is now running and listening for messages..."
-    )
-
+    runner = None
+    app_started = False
     try:
-        await idle()
+        await app.start()
+        app_started = True
+        bot_info = await app.get_me()
+        LOGGER.info("Bot started: %s (@%s)", bot_info.first_name, bot_info.username)
 
+        runner = await start_web_server()
+        LOGGER.info("Bot is now running and listening for messages...")
+        await idle()
     finally:
         LOGGER.info("Stopping bot...")
-
-        try:
-            await runner.cleanup()
-        except Exception:
-            LOGGER.exception("Web server cleanup failed")
-
-        try:
-            await app.stop()
-        except Exception:
-            LOGGER.exception("Bot stop failed")
+        if runner is not None:
+            try:
+                await runner.cleanup()
+            except Exception:
+                LOGGER.exception("Web server cleanup failed")
+        if app_started:
+            try:
+                await app.stop()
+            except Exception:
+                LOGGER.exception("Bot stop failed")
 
 
 if __name__ == "__main__":
