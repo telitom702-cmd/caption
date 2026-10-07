@@ -12,7 +12,7 @@ LOGGER = logging.getLogger(__name__)
 
 # সমস্যা ১: ইম্পোর্ট পাথ ঠিক করা হয়েছে 
 # যদি আপনার database.py ফাইলটি plugins/ ফোল্ডারে থাকে, তবে নিচের লাইনটি ব্যবহার করুন:
-from plugins.database import db
+from plugins.database.database import db
 # যদি আলাদা ফোল্ডার থাকে (plugins/database/database.py), তবে: from plugins.database.database import db
 
 COLLECTION_NAME = "auto_cleaner"
