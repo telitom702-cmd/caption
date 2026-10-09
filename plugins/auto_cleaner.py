@@ -218,7 +218,7 @@ async def cleaner_keyboard():
         [InlineKeyboardButton("🟢 Cleaner ON" if enabled else "🔴 Cleaner OFF", callback_data="ac_toggle")],
         [InlineKeyboardButton("🧹 Caption ON" if caption_enabled else "🚫 Caption OFF", callback_data="ac_caption")],
         [InlineKeyboardButton("➕ Add Text", callback_data="ac_add"), InlineKeyboardButton("➖ Delete Text", callback_data="ac_delete")],
-        [InlineKeyboardButton("🔄 Refresh", callback_data="ac_refresh")]
+        [InlineKeyboardButton("🔄 Refresh", callback_data="ac_refresh")],
         [InlineKeyboardButton("❌ Close", callback_data="ac_close")]
     ])
 
