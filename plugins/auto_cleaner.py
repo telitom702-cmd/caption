@@ -317,7 +317,7 @@ async def cleaner_callback(client, query):
 @Client.on_message(
     filters.private
     & filters.text
-    & ~filters.command(["cancel", "start", "cleaner", "id", "stats"])
+    & ~filters.command(["cancel", "start", "cleaner", "id", "stats","copy"])
 )
 async def cleaner_text_input(client, message):
     if message.from_user.id not in ADMINS:
