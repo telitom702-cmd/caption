@@ -304,6 +304,10 @@ async def cleaner_callback(client, query):
     elif data == "ac_refresh":
         await query.answer()
 
+    elif data == "ac_close":
+        await query.answer("Menu Closed")
+        await query.message.delete()
+        return
     try:
         await query.message.edit_text(
             await cleaner_menu(),
