@@ -219,8 +219,8 @@ async def cleaner_keyboard():
         [InlineKeyboardButton("🧹 Caption ON" if caption_enabled else "🚫 Caption OFF", callback_data="ac_caption")],
         [InlineKeyboardButton("➕ Add Text", callback_data="ac_add"), InlineKeyboardButton("➖ Delete Text", callback_data="ac_delete")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="ac_refresh")]
+        [InlineKeyboardButton("❌ Close", callback_data="ac_close")]
     ])
-
 
 @Client.on_message(filters.private & filters.command("cleaner"))
 async def cleaner_command(client, message):
