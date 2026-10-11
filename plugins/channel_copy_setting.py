@@ -176,9 +176,11 @@ async def menu_text():
 
 
 async def show_menu(message):
+    from plugins.channel_copy import main_menu as copy_menu, main_keyboard as copy_keyboard
+
     await message.reply_text(
-        await menu_text(),
-        reply_markup=await main_keyboard(),
+        await copy_menu(),
+        reply_markup=await copy_keyboard(),
         parse_mode=enums.ParseMode.HTML,
     )
 
@@ -315,9 +317,10 @@ async def copy_setting_callback(client, query):
         return
 
     try:
+        from plugins.channel_copy import main_menu as copy_menu, main_keyboard as copy_keyboard
         await query.message.edit_text(
-            await menu_text(),
-            reply_markup=await main_keyboard(),
+            await copy_menu(),
+            reply_markup=await copy_keyboard(),
             parse_mode=enums.ParseMode.HTML,
         )
     except RPCError:

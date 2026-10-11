@@ -295,9 +295,10 @@ async def source_duplicate_callback(client, query):
         return
 
     try:
+        from plugins.channel_copy import main_menu as copy_menu, main_keyboard as copy_keyboard
         await query.message.edit_text(
-            await source_duplicate_text(),
-            reply_markup=await source_duplicate_keyboard(),
+            await copy_menu(),
+            reply_markup=await copy_keyboard(),
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:

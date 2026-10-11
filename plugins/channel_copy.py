@@ -784,55 +784,60 @@ async def main_keyboard():
     settings = await get_copy_settings()
     language = settings.get("language", "both")
 
+    from plugins.channel_copy_setting import get_settings as get_channel_settings
+    channel_settings = await get_channel_settings()
+    duplicate_settings = await get_source_duplicate_settings()
+    duplicate_enabled = duplicate_settings.get("enabled", True)
+
     return InlineKeyboardMarkup([
         [
+            InlineKeyboardButton("▶️ Start Copy", callback_data="cc_start"),
+            InlineKeyboardButton("⛔ Stop", callback_data="cc_stop"),
+        ],
+        [
+            InlineKeyboardButton("🇮🇳 Hindi" + (" ✓" if language == "hindi" else ""), callback_data="cc_lang_hindi"),
+            InlineKeyboardButton("🇧🇩 Bangla" + (" ✓" if language == "bangla" else ""), callback_data="cc_lang_bangla"),
+            InlineKeyboardButton("🌐 Both" + (" ✓" if language == "both" else ""), callback_data="cc_lang_both"),
+        ],
+        [InlineKeyboardButton("⚙️ Settings", callback_data="cc_settings")],
+        [
             InlineKeyboardButton(
-                "▶️ Start Copy",
-                callback_data="cc_start",
+                "📥 Source: ON" if channel_settings.get("source_enabled", True) else "📥 Source: OFF",
+                callback_data="ccs_source_toggle",
             ),
             InlineKeyboardButton(
-                "⛔ Stop",
-                callback_data="cc_stop",
+                "📤 Target: ON" if channel_settings.get("target_enabled", True) else "📤 Target: OFF",
+                callback_data="ccs_target_toggle",
             ),
         ],
         [
+            InlineKeyboardButton("➕ Add Source", callback_data="ccs_add_source"),
+            InlineKeyboardButton("➕ Add Target", callback_data="ccs_add_target"),
+        ],
+        [
+            InlineKeyboardButton("🔄 Change Source", callback_data="ccs_change_source"),
+            InlineKeyboardButton("🔄 Change Target", callback_data="ccs_change_target"),
+        ],
+        [
+            InlineKeyboardButton("🗑️ Delete Source", callback_data="ccs_delete_source"),
+            InlineKeyboardButton("🗑️ Delete Target", callback_data="ccs_delete_target"),
+        ],
+        [InlineKeyboardButton("🧹 Delete All Data", callback_data="ccs_delete_all")],
+        [
             InlineKeyboardButton(
-                "🇮🇳 Hindi" + (
-                    " ✓" if language == "hindi" else ""
-                ),
-                callback_data="cc_lang_hindi",
-            ),
-            InlineKeyboardButton(
-                "🇧🇩 Bangla" + (
-                    " ✓" if language == "bangla" else ""
-                ),
-                callback_data="cc_lang_bangla",
-            ),
-            InlineKeyboardButton(
-                "🌐 Both" + (
-                    " ✓" if language == "both" else ""
-                ),
-                callback_data="cc_lang_both",
+                "🔴 Turn OFF" if duplicate_enabled else "🟢 Turn ON",
+                callback_data="sdc_toggle",
             ),
         ],
         [
-            InlineKeyboardButton(
-                "⚙️ Settings",
-                callback_data="cc_settings",
-            ),
+            InlineKeyboardButton("🆔 Channel IDs", callback_data="cc_channel_ids"),
+            InlineKeyboardButton("🛡 Duplicate Check", callback_data="cc_source_dupe"),
         ],
         [
-            InlineKeyboardButton(
-                "🆔 Channel IDs",
-                callback_data="cc_channel_ids",
-            ),
-            InlineKeyboardButton(
-                "🛡 Duplicate Check",
-                callback_data="cc_source_dupe",
-            ),
+            InlineKeyboardButton("🔄 Refresh", callback_data="cc_refresh"),
+            InlineKeyboardButton("❌ Close", callback_data="cc_close"),
         ],
     ])
-
 
 # ============================================================
 # SETTINGS KEYBOARD
