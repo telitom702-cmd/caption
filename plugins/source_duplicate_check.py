@@ -236,6 +236,12 @@ async def source_duplicate_keyboard():
                 callback_data="sdc_close",
             ),
         ],
+        [
+            InlineKeyboardButton(
+                "🔙 Back to /copy",
+                callback_data="cc_back_main",
+            ),
+        ],
     ])
 
 
@@ -265,9 +271,8 @@ async def source_duplicate_command(client, message):
         return
 
     await message.reply_text(
-        await source_duplicate_text(),
-        reply_markup=await source_duplicate_keyboard(),
-        parse_mode=enums.ParseMode.HTML,
+        "Source duplicate settings এখন /copy menu-এর ভিতরে আছে। "
+        "/copy পাঠিয়ে “Duplicate Check” চাপুন।"
     )
 
 

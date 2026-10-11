@@ -24,6 +24,7 @@ from pyrogram.errors import (
 from info import ADMINS
 from plugins.database.database import db
 from plugins.source_duplicate_check import (
+    get_source_duplicate_settings,
     is_source_duplicate,
     mark_source_processed,
 )
@@ -741,6 +742,7 @@ async def new_source_post(client, message):
 # ============================================================
 async def main_menu():
     settings = await get_copy_settings()
+    duplicate_settings = await get_source_duplicate_settings()
 
     enabled = settings.get("enabled", False)
     source = settings.get("source_chat")
@@ -748,6 +750,7 @@ async def main_menu():
     source_on = settings.get("source_enabled", True)
     target_on = settings.get("target_enabled", True)
     language = settings.get("language", "both")
+    duplicate_on = duplicate_settings.get("enabled", True)
 
     status = "🟢 ON" if enabled else "🔴 OFF"
     source_status = "🟢 ON" if source_on else "🔴 OFF"
@@ -767,7 +770,7 @@ async def main_menu():
         f"📤 Target: <b>{target_status}</b>\n"
         f"<code>{target or 'Not Set'}</code>\n\n"
         f"🌐 Language: <b>{language_name}</b>\n\n"
-        "🛡 Duplicate Protection: <b>ON</b>\n"
+        f"🛡 Source Duplicate Check: <b>{'ON' if duplicate_on else 'OFF'}</b>\n"
         "🔄 Retry Queue: <b>ON</b>\n"
         "💾 MongoDB Queue: <b>ON</b>"
     )
@@ -822,6 +825,10 @@ async def main_keyboard():
             InlineKeyboardButton(
                 "🆔 Channel IDs",
                 callback_data="cc_channel_ids",
+            ),
+            InlineKeyboardButton(
+                "🛡 Duplicate Check",
+                callback_data="cc_source_dupe",
             ),
         ],
     ])
@@ -971,6 +978,29 @@ async def copy_callback(client, query):
         await query.message.edit_text(
             await channel_id_menu_text(),
             reply_markup=await channel_id_keyboard(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        await query.answer()
+        return
+
+    elif data == "cc_source_dupe":
+        from plugins.source_duplicate_check import (
+            source_duplicate_keyboard,
+            source_duplicate_text,
+        )
+
+        await query.message.edit_text(
+            await source_duplicate_text(),
+            reply_markup=await source_duplicate_keyboard(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        await query.answer()
+        return
+
+    elif data == "cc_back_main":
+        await query.message.edit_text(
+            await main_menu(),
+            reply_markup=await main_keyboard(),
             parse_mode=enums.ParseMode.HTML,
         )
         await query.answer()

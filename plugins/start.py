@@ -10,8 +10,6 @@ async def start_command(client, message):
         "✅ Bot is online and ready.\n\n"
         "<b>Admin commands</b>\n"
         "/copy — copy controls\n"
-        "/copysetting — set Source/Target by numeric channel ID\n"
-        "/sourcedupe — source duplicate protection\n"
         "/cleaner — caption cleaner",
         parse_mode=ParseMode.HTML
     )

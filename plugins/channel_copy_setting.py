@@ -155,6 +155,9 @@ async def main_keyboard():
             InlineKeyboardButton("🔄 Refresh", callback_data="ccs_refresh"),
             InlineKeyboardButton("❌ Close", callback_data="ccs_close"),
         ],
+        [
+            InlineKeyboardButton("🔙 Back to /copy", callback_data="cc_back_main"),
+        ],
     ])
 
 
@@ -190,7 +193,10 @@ async def copy_setting_command(client, message):
         await message.reply_text("এই কমান্ডটি শুধু bot admin ব্যবহার করতে পারবেন।")
         return
 
-    await show_menu(message)
+    await message.reply_text(
+        "Channel ID settings এখন /copy menu-এর ভিতরে আছে। "
+        "/copy পাঠিয়ে “Channel IDs” চাপুন।"
+    )
 
 
 # --------------------------------------------------
