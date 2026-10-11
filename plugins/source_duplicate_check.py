@@ -261,6 +261,7 @@ async def source_duplicate_text():
 )
 async def source_duplicate_command(client, message):
     if not message.from_user or message.from_user.id not in ADMINS:
+        await message.reply_text("এই কমান্ডটি শুধু bot admin ব্যবহার করতে পারবেন।")
         return
 
     await message.reply_text(

@@ -187,6 +187,7 @@ async def show_menu(message):
 @Client.on_message(filters.private & filters.command("copysetting"))
 async def copy_setting_command(client, message):
     if not message.from_user or message.from_user.id not in ADMINS:
+        await message.reply_text("এই কমান্ডটি শুধু bot admin ব্যবহার করতে পারবেন।")
         return
 
     await show_menu(message)
@@ -326,7 +327,13 @@ async def copy_setting_callback(client, query):
 # --------------------------------------------------
 
 @Client.on_message(
-    filters.private & filters.text & ~filters.command(["cancel"])
+    filters.private
+    & filters.text
+    & ~filters.command([
+        "cancel", "start", "sourcedupe", "copysetting", "copy",
+        "cleaner", "id", "stats",
+    ]),
+    group=11,
 )
 async def copy_setting_input(client, message):
     if not message.from_user or message.from_user.id not in ADMINS:
