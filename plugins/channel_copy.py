@@ -1161,6 +1161,7 @@ async def copy_callback(client, query):
         "id",
         "stats",
         "copy",
+        "copysetting",
     ])
 )
 async def copy_admin_text_input(client, message):
