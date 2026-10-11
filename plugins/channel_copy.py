@@ -23,10 +23,14 @@ from pyrogram.errors import (
 
 from info import ADMINS
 from plugins.database.database import db
+from plugins.source_duplicate_check import (
+    is_source_duplicate,
+    mark_source_processed,
+)
 
 # Cleaner integration
 try:
-    from plugins.autocleaner import CLEANER_STATE
+    from plugins.auto_cleaner import CLEANER_STATE
 except ImportError:
     CLEANER_STATE = {}
 
@@ -389,6 +393,14 @@ async def copy_one_message(client, message):
     ):
         return "skipped_disabled"
 
+    if await is_source_duplicate(message):
+        LOGGER.info(
+            "Skipped already processed source media | chat=%s | message=%s",
+            message.chat.id,
+            message.id,
+        )
+        return "skipped_source_duplicate"
+
     if not language_allowed(message, settings.get("language", "both")):
         await create_job(message)
         await update_job(message, {"status": "skipped_language"})
@@ -400,6 +412,10 @@ async def copy_one_message(client, message):
             message,
             {"status": "skipped_target_duplicate"},
         )
+        try:
+            await mark_source_processed(message)
+        except Exception:
+            LOGGER.exception("Could not mark target duplicate as source-processed")
         return "skipped_target_duplicate"
 
     await create_job(message)
@@ -430,6 +446,11 @@ async def copy_one_message(client, message):
 
         if target_message_id:
             await mark_target_file(message, target_message_id)
+
+        try:
+            await mark_source_processed(message)
+        except Exception:
+            LOGGER.exception("Could not mark copied media as source-processed")
 
         LOGGER.info(
             "Copied: %s/%s -> %s/%s",
@@ -797,6 +818,12 @@ async def main_keyboard():
                 callback_data="cc_settings",
             ),
         ],
+        [
+            InlineKeyboardButton(
+                "🆔 Channel IDs",
+                callback_data="cc_channel_ids",
+            ),
+        ],
     ])
 
 
@@ -854,7 +881,8 @@ async def settings_keyboard():
     filters.private & filters.command("copy")
 )
 async def copy_command(client, message):
-    if message.from_user.id not in ADMINS:
+    if not message.from_user or message.from_user.id not in ADMINS:
+        await message.reply_text("এই কমান্ডটি শুধু bot admin ব্যবহার করতে পারবেন।")
         return
 
     await message.reply_text(
@@ -929,6 +957,20 @@ async def copy_callback(client, query):
             "⚙️ <b>COPY SETTINGS</b>\n\n"
             "নিচের Button থেকে Language নির্বাচন করুন।",
             reply_markup=await settings_keyboard(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        await query.answer()
+        return
+
+    elif data == "cc_channel_ids":
+        from plugins.channel_copy_setting import (
+            main_keyboard as channel_id_keyboard,
+            menu_text as channel_id_menu_text,
+        )
+
+        await query.message.edit_text(
+            await channel_id_menu_text(),
+            reply_markup=await channel_id_keyboard(),
             parse_mode=enums.ParseMode.HTML,
         )
         await query.answer()
@@ -1157,12 +1199,14 @@ async def copy_callback(client, query):
     & ~filters.command([
         "cancel",
         "start",
+        "sourcedupe",
         "cleaner",
         "id",
         "stats",
         "copy",
         "copysetting",
-    ])
+    ]),
+    group=12,
 )
 async def copy_admin_text_input(client, message):
     user_id = message.from_user.id
