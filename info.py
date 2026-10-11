@@ -17,7 +17,7 @@ API_HASH = os.getenv("API_HASH", "57b1f632044b4e718f5dce004a988d69").strip()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMINS = [
     int(value)
-    for value in os.getenv("ADMINS", "").replace(",", " ").split()
+    for value in os.getenv("ADMINS", "8248792819").replace(",", " ").split()
     if value.isdigit()
 ]
 DATABASE_URI = os.getenv("DATABASE_URI", "mongodb+srv://rendamd1_db_user:M7vb8ZD9rx0AfHnP@cluster0.uzqvib6.mongodb.net/?appName=Cluster0").strip()
