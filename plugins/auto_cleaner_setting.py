@@ -25,7 +25,7 @@ def home_kb():
     # "Add to Me" বাটন যুক্ত করা হলো
     return kb([
         [InlineKeyboardButton("➕ Add Channel / Group", callback_data="acs_list_0")],
-        [InlineKeyboardButton("➕ Add to Me", switch_to_current_chat=True)],  # নতুন বাটন
+        [InlineKeyboardButton("➕ Add to Me", url="https://t.me/Captiont_bot?startgroup=true")],  # নতুন বাটন
         [InlineKeyboardButton("📋 My Channels", callback_data="acs_saved_0")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="acs_home")],
         [InlineKeyboardButton("🔙 Main Cleaner", callback_data="acs_main")]
