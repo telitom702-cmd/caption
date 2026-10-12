@@ -7,6 +7,7 @@ from pyrogram import Client, enums, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from info import ADMINS
+from plugins.auto_cleaner_setting import is_cleaner_channel_enabled
 
 # ডিবাগ লগিং সিস্টেম মুছে ফেলা হয়েছে, শুধুমাত্র লগার নেওয়া হয়েছে
 LOGGER = logging.getLogger(__name__)
@@ -165,6 +166,13 @@ async def process_message(message):
         LOGGER.debug("Cleaner is disabled. Skipping message.")
         return
 
+    if not await is_cleaner_channel_enabled(message.chat.id):
+        LOGGER.debug(
+            "Cleaner is disabled for channel %s. Skipping message.",
+            message.chat.id,
+        )
+        return
+
     if await is_processed(message.chat.id, message.id):
         LOGGER.debug("Message already processed.")
         return
@@ -218,6 +226,7 @@ async def cleaner_keyboard():
         [InlineKeyboardButton("🟢 Cleaner ON" if enabled else "🔴 Cleaner OFF", callback_data="ac_toggle")],
         [InlineKeyboardButton("🧹 Caption ON" if caption_enabled else "🚫 Caption OFF", callback_data="ac_caption")],
         [InlineKeyboardButton("➕ Add Text", callback_data="ac_add"), InlineKeyboardButton("➖ Delete Text", callback_data="ac_delete")],
+        [InlineKeyboardButton("📢 Channel Settings", callback_data="ac_channels")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="ac_refresh")],
         [InlineKeyboardButton("❌ Close", callback_data="ac_close")]
     ])
@@ -265,6 +274,17 @@ async def cleaner_callback(client, query):
             await query.answer("Toggled!")
         else:
             await query.answer("Could not save settings.", show_alert=True)
+
+    elif data == "ac_channels":
+        from plugins.auto_cleaner_setting import channel_home_text, channel_home_kb
+
+        await query.answer()
+        await query.message.edit_text(
+            await channel_home_text(),
+            reply_markup=channel_home_kb(),
+            parse_mode=enums.ParseMode.HTML
+        )
+        return
 
     elif data == "ac_add":
         CLEANER_STATE[user_id] = "add"
