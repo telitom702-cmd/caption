@@ -304,6 +304,17 @@ async def cleaner_callback(client, query):
         return
 
     elif data == "ac_add":
+        # An admin can only have one pending text-input flow at a time.
+        try:
+            from plugins.channel_copy_setting import ADMIN_STATE as CHANNEL_COPY_STATE
+            CHANNEL_COPY_STATE.pop(user_id, None)
+        except ImportError:
+            pass
+        try:
+            from plugins.channel_copy import ADMIN_STATE as COPY_ADMIN_STATE
+            COPY_ADMIN_STATE.pop(user_id, None)
+        except ImportError:
+            pass
         CLEANER_STATE[user_id] = "add"
         await query.message.edit_text("📝 Send the text you want to remove.")
         await query.answer()
