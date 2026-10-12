@@ -294,7 +294,7 @@ async def channel_settings_callback(client, query):
 
 
 # Main Auto Cleaner থেকে ব্যবহার করার helper
-async def cleaner_channel_enabled(chat_id):
+async def is_cleaner_channel_enabled(chat_id):
     doc = await COL.find_one({
         "_id": int(chat_id),
         "enabled": True,

@@ -141,16 +141,16 @@ async def mark_processed(chat_id, message_id):
 
 async def process_caption(message):
     if not message.caption:
-        return False
+        return None
     remove_texts = await get_remove_texts()
     if not remove_texts:
-        return False
+        return None
 
     old_caption = message.caption
     new_caption = clean_text(old_caption, remove_texts)
 
     if new_caption == old_caption:
-        return False
+        return None
 
     try:
         await message.edit_caption(caption=new_caption)
@@ -184,13 +184,16 @@ async def process_message(message):
     caption_enabled = settings.get("caption_cleaner", True)
 
     if caption_enabled:
-        await process_caption(message)
+        caption_processed = await process_caption(message)
+        if caption_processed is False:
+            return
 
     await mark_processed(message.chat.id, message.id)
 
 
 @Client.on_message(
-    filters.channel & (filters.video | filters.document | filters.audio)
+    (filters.channel | filters.group)
+    & (filters.video | filters.document | filters.audio)
 )
 async def auto_cleaner_channel_handler(client, message):
     LOGGER.debug("Received media in channel: chat=%s msg=%s", message.chat.id, message.id)
@@ -276,12 +279,12 @@ async def cleaner_callback(client, query):
             await query.answer("Could not save settings.", show_alert=True)
 
     elif data == "ac_channels":
-        from plugins.auto_cleaner_setting import channel_home_text, channel_home_kb
+        from plugins.auto_cleaner_setting import home_text, home_kb
 
         await query.answer()
         await query.message.edit_text(
-            await channel_home_text(),
-            reply_markup=channel_home_kb(),
+            await home_text(),
+            reply_markup=home_kb(),
             parse_mode=enums.ParseMode.HTML
         )
         return
