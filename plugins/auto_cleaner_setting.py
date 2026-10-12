@@ -52,7 +52,7 @@ def is_bot_admin(status):
 
 
 # Bot admin হওয়া চ্যাটের ID স্বয়ংক্রিয়ভাবে সংরক্ষণ
-@Client.on_my_chat_member()
+@Client.on_chat_member_update()
 async def remember_chat(client, update):
     try:
         chat = update.chat
