@@ -22,7 +22,7 @@ async def is_cleaner_channel_enabled(chat_id):
 
 def channel_home_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Add Channel ID", callback_data="acs_list_0")],
+        [InlineKeyboardButton("➕ Add Channel", callback_data="acs_list_0")],
         [InlineKeyboardButton("📋 My Channels", callback_data="acs_saved_0")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="acs_home")],
         [InlineKeyboardButton("🔙 Main Cleaner", callback_data="acs_main")]
@@ -36,7 +36,7 @@ async def channel_home_text():
         "📢 <b>Channel Settings</b>\n\n"
         f"Total Channels: <b>{total}</b>\n"
         f"Cleaner ON: <b>{active}</b>\n\n"
-        "Add Channel চাপুন এবং তালিকা থেকে নির্বাচন করুন।"
+        "Add Channel চাপুন, channel বাছুন; ID দেখে Confirm করলে তবেই যোগ হবে।"
     )
 
 
@@ -89,13 +89,18 @@ async def build_channel_list(client, page=0, saved=False):
             prefix = "✅ Added: " if exists else "➕ "
             rows.append([InlineKeyboardButton(
                 f"{prefix}{item['title']}"[:60],
-                callback_data=f"acs_select_{cid}"
+                callback_data=f"acs_select_{cid}_{page}"
             )])
 
     if not current:
-        rows.append([InlineKeyboardButton(
-            "কোনো চ্যানেল পাওয়া যায়নি", callback_data="acs_noop"
-        )])
+        if saved:
+            rows.append([InlineKeyboardButton(
+                "কোনো saved channel নেই", callback_data="acs_noop"
+            )])
+        else:
+            rows.append([InlineKeyboardButton(
+                "🔄 Retry channel search", callback_data="acs_list_0"
+            )])
 
     nav = []
     if page > 0:
@@ -137,6 +142,13 @@ async def channel_settings_callback(client, query):
 
     data = query.data
 
+    callback_answered = False
+
+    async def answer(text=None, show_alert=False):
+        nonlocal callback_answered
+        await query.answer(text, show_alert=show_alert)
+        callback_answered = True
+
     try:
         if data == "acs_main":
             # auto_cleaner.py-কে আপনার মূল Cleaner ফাইলের নাম দিয়ে বদলান।
@@ -147,7 +159,7 @@ async def channel_settings_callback(client, query):
                 reply_markup=await cleaner_keyboard(),
                 parse_mode=enums.ParseMode.HTML
             )
-            return await query.answer()
+            return await answer()
 
         if data == "acs_home":
             await query.message.edit_text(
@@ -155,36 +167,119 @@ async def channel_settings_callback(client, query):
                 reply_markup=channel_home_kb(),
                 parse_mode=enums.ParseMode.HTML
             )
-            return await query.answer()
+            return await answer()
 
         if data == "acs_noop":
-            return await query.answer("কোনো চ্যানেল পাওয়া যায়নি।", show_alert=True)
+            return await answer("কোনো চ্যানেল পাওয়া যায়নি।", show_alert=True)
 
         if data.startswith(("acs_list_", "acs_saved_")):
             saved = data.startswith("acs_saved_")
             page = int(data.rsplit("_", 1)[1])
+            await answer("Saved channel তালিকা লোড হচ্ছে..." if saved else "চ্যানেল খুঁজছি...")
             kb, total = await build_channel_list(client, page, saved)
-            title = "📋 My Channels" if saved else "➕ Select Channel"
+            if not saved and total == 0:
+                text = (
+                    "➕ <b>Add Channel</b>\n\n"
+                    "কোনো channel পাওয়া যায়নি। Bot-কে target channel-এ Admin হিসেবে যোগ করে "
+                    "আবার Retry করুন। Channel শুধু Confirm চাপার পরই save হবে।"
+                )
+            else:
+                title = "📋 My Channels" if saved else "➕ Select Channel"
+                text = f"<b>{title}</b>\n\nTotal: <b>{total}</b>"
+                if not saved:
+                    text += "\n\nএকটি channel বাছুন। ID দেখে Confirm না করা পর্যন্ত এটি যোগ হবে না।"
             await query.message.edit_text(
-                f"<b>{title}</b>\n\nTotal: <b>{total}</b>",
+                text,
                 reply_markup=kb,
                 parse_mode=enums.ParseMode.HTML
             )
-            return await query.answer()
+            return
 
         if data.startswith("acs_select_"):
-            cid = int(data.rsplit("_", 1)[1])
+            payload = data[len("acs_select_"):]
+            parts = payload.rsplit("_", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                raw_id, page = parts[0], int(parts[1])
+            else:
+                raw_id, page = payload, 0
+            cid = int(raw_id)
+            await answer("Channel যাচাই করছি...")
             chat = await client.get_chat(cid)
+            if chat.type != enums.ChatType.CHANNEL:
+                return await query.message.edit_text(
+                    "❌ এটি channel নয়। আবার channel তালিকা থেকে বাছুন।",
+                    reply_markup=channel_home_kb()
+                )
             me = await client.get_me()
             member = await client.get_chat_member(cid, me.id)
-
             if member.status not in (
                 enums.ChatMemberStatus.ADMINISTRATOR,
                 enums.ChatMemberStatus.OWNER,
             ):
-                return await query.answer(
-                    "বটকে আগে চ্যানেলে Admin করুন।", show_alert=True
+                return await query.message.edit_text(
+                    "❌ Bot-কে আগে channel-এ Admin করুন, তারপর আবার বাছুন।",
+                    reply_markup=channel_home_kb()
                 )
+
+            existing = await COL.find_one({"_id": cid})
+            if existing:
+                return await query.message.edit_text(
+                    "✅ <b>Channel আগে থেকেই যোগ করা আছে</b>\n\n"
+                    f"Name: <b>{escape(chat.title or 'Channel')}</b>\n"
+                    f"ID: <code>{cid}</code>\n"
+                    f"Cleaner: <b>{'🟢 ON' if existing.get('enabled', False) else '🔴 OFF'}</b>",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 My Channels", callback_data="acs_saved_0")],
+                        [InlineKeyboardButton("🔄 Back to channel list", callback_data=f"acs_list_{page}")],
+                        [InlineKeyboardButton("🔙 Channel Settings", callback_data="acs_home")]
+                    ]),
+                    parse_mode=enums.ParseMode.HTML
+                )
+
+            return await query.message.edit_text(
+                "🔎 <b>Confirm Channel</b>\n\n"
+                f"Name: <b>{escape(chat.title or 'Channel')}</b>\n"
+                f"ID: <code>{cid}</code>\n\n"
+                "এই channel-এ Auto Cleaner চালু করতে Confirm চাপুন। Cancel করলে কিছু save হবে না।",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Confirm Add", callback_data=f"acs_confirm_{cid}")],
+                    [InlineKeyboardButton("❌ Cancel", callback_data=f"acs_canceladd_{page}")]
+                ]),
+                parse_mode=enums.ParseMode.HTML
+            )
+
+        if data.startswith("acs_confirm_"):
+            cid = int(data[len("acs_confirm_"):])
+            await answer("Channel save করছি...")
+            chat = await client.get_chat(cid)
+            if chat.type != enums.ChatType.CHANNEL:
+                return await query.message.edit_text(
+                    "❌ এটি আর channel হিসেবে পাওয়া যাচ্ছে না।", reply_markup=channel_home_kb()
+                )
+            me = await client.get_me()
+            member = await client.get_chat_member(cid, me.id)
+            if member.status not in (
+                enums.ChatMemberStatus.ADMINISTRATOR,
+                enums.ChatMemberStatus.OWNER,
+            ):
+                return await query.message.edit_text(
+                    "❌ Bot channel-এ Admin নেই। Channel যোগ করা হয়নি।",
+                    reply_markup=channel_home_kb()
+                )
+
+            existing = await COL.find_one({"_id": cid})
+            if existing:
+                await query.message.edit_text(
+                    "✅ <b>Channel আগে থেকেই যোগ করা আছে</b>\n\n"
+                    f"Name: <b>{escape(chat.title or 'Channel')}</b>\n"
+                    f"ID: <code>{cid}</code>",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 My Channels", callback_data="acs_saved_0")],
+                        [InlineKeyboardButton("🔙 Channel Settings", callback_data="acs_home")]
+                    ]),
+                    parse_mode=enums.ParseMode.HTML
+                )
+                return
 
             await COL.update_one(
                 {"_id": cid},
@@ -195,18 +290,37 @@ async def channel_settings_callback(client, query):
                 }},
                 upsert=True
             )
-            await query.answer("Channel added / already exists.")
-            return await query.message.edit_text(
-                f"✅ <b>Channel Selected</b>\n\n"
+            await query.message.edit_text(
+                "✅ <b>Channel Added</b>\n\n"
                 f"Name: <b>{escape(chat.title or 'Channel')}</b>\n"
-                f"ID: <code>{cid}</code>",
+                f"ID: <code>{cid}</code>\n"
+                "Cleaner: <b>🟢 ON</b>",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 My Channels", callback_data="acs_saved_0")],
-                    [InlineKeyboardButton("🔙 Channel Settings", callback_data="acs_home")],
-                    [InlineKeyboardButton("❌ Cancel", callback_data="acs_main")]
+                    [InlineKeyboardButton("➕ Add another", callback_data="acs_list_0")],
+                    [InlineKeyboardButton("🔙 Channel Settings", callback_data="acs_home")]
                 ]),
                 parse_mode=enums.ParseMode.HTML
             )
+            return
+
+        if data.startswith("acs_canceladd_"):
+            page = int(data.rsplit("_", 1)[1])
+            await answer("Cancel — channel save করা হয়নি।")
+            kb, total = await build_channel_list(client, page, False)
+            text = (
+                "➕ <b>Select Channel</b>\n\n"
+                f"Total: <b>{total}</b>\n"
+                "একটি channel বাছুন; Confirm না করলে সেটি যোগ হবে না।"
+            )
+            if total == 0:
+                text += "\n\nBot-কে target channel-এ Admin করে Retry করুন।"
+            await query.message.edit_text(
+                text,
+                reply_markup=kb,
+                parse_mode=enums.ParseMode.HTML
+            )
+            return
 
         if data.startswith(("acs_detail_", "acs_toggle_", "acs_delete_")):
             action, raw_id = data[4:].rsplit("_", 1)
@@ -214,11 +328,11 @@ async def channel_settings_callback(client, query):
             doc = await COL.find_one({"_id": cid})
 
             if not doc:
-                return await query.answer("Channel পাওয়া যায়নি।", show_alert=True)
+                return await answer("Channel পাওয়া যায়নি।", show_alert=True)
 
             if action == "delete":
                 await COL.delete_one({"_id": cid})
-                await query.answer("Channel deleted.")
+                await answer("Channel deleted.")
                 kb, total = await build_channel_list(client, 0, True)
                 return await query.message.edit_text(
                     f"📋 <b>My Channels</b>\nTotal: <b>{total}</b>",
@@ -230,7 +344,7 @@ async def channel_settings_callback(client, query):
                 enabled = not bool(doc.get("enabled", False))
                 await COL.update_one({"_id": cid}, {"$set": {"enabled": enabled}})
                 doc["enabled"] = enabled
-                await query.answer("Cleaner ON" if enabled else "Cleaner OFF")
+                await answer("Cleaner ON" if enabled else "Cleaner OFF")
 
             enabled = bool(doc.get("enabled", False))
             await query.message.edit_text(
@@ -244,10 +358,28 @@ async def channel_settings_callback(client, query):
 
     except (ValueError, RPCError) as exc:
         LOG.warning("Channel settings error: %s", exc)
-        await query.answer(
-            "চ্যানেল অ্যাক্সেস বা Admin permission যাচাই করুন।",
-            show_alert=True
-        )
+        if callback_answered:
+            try:
+                await query.message.edit_text(
+                    "❌ Channel access/Admin permission যাচাই করুন, তারপর আবার চেষ্টা করুন।",
+                    reply_markup=channel_home_kb()
+                )
+            except Exception:
+                LOG.exception("Could not display channel settings error")
+        else:
+            await answer(
+                "চ্যানেল অ্যাক্সেস বা Admin permission যাচাই করুন।",
+                show_alert=True
+            )
     except Exception:
         LOG.exception("Channel settings error")
-        await query.answer("Error occurred.", show_alert=True)
+        if callback_answered:
+            try:
+                await query.message.edit_text(
+                    "❌ Error occurred. আবার চেষ্টা করুন।",
+                    reply_markup=channel_home_kb()
+                )
+            except Exception:
+                LOG.exception("Could not display channel settings error")
+        else:
+            await answer("Error occurred.", show_alert=True)
