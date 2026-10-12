@@ -22,8 +22,10 @@ def kb(rows):
 
 
 def home_kb():
+    # "Add to Me" বাটন যুক্ত করা হলো
     return kb([
         [InlineKeyboardButton("➕ Add Channel / Group", callback_data="acs_list_0")],
+        [InlineKeyboardButton("➕ Add to Me", switch_to_current_chat=True)],  # নতুন বাটন
         [InlineKeyboardButton("📋 My Channels", callback_data="acs_saved_0")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="acs_home")],
         [InlineKeyboardButton("🔙 Main Cleaner", callback_data="acs_main")]
@@ -39,7 +41,8 @@ async def home_text():
         f"Detected Chats: <b>{found}</b>\n"
         f"Saved Chats: <b>{total}</b>\n"
         f"Cleaner ON: <b>{active}</b>\n\n"
-        "Add Channel চাপুন এবং তালিকা থেকে নির্বাচন করুন।"
+        "Add Channel চাপুন এবং তালিকা থেকে নির্বাচন করুন। \n"
+        "অথবা 'Add to Me' বাটন চেপে সরাসরি গ্রুপ/চ্যানেলে বটকে অ্যাড করুন।"
     )
 
 
