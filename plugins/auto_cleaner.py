@@ -102,14 +102,28 @@ async def delete_remove_text(text):
 def clean_text(text, remove_texts):
     if not text:
         return ""
-    result = text
-    for remove_text in remove_texts:
-        if not remove_text:
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"\[\s*\]", "", line)
+        removed_text = False
+        for remove_text in remove_texts:
+            if not remove_text:
+                continue
+            line, count = re.subn(
+                re.escape(remove_text), "", line, flags=re.IGNORECASE
+            )
+            removed_text = removed_text or count > 0
+        if removed_text:
+            line = re.sub(
+                r"[ \t]*([|:_-])[ \t]*(?:[|:_-][ \t]*)+",
+                r" \1 ",
+                line,
+            )
+            line = re.sub(r"^[\s\-_:|]+|[\s\-_:|]+$", "", line)
+        line = line.strip()
+        if re.fullmatch(r"[\s\-_:|]*", line):
             continue
-        result = re.sub(re.escape(remove_text), "", result, flags=re.IGNORECASE)
-    result = re.sub(r"\[\s*\]", "", result)
-    result = re.sub(r"^[\s\-_:|]+$", "", result, flags=re.MULTILINE)
-    lines = [line.strip() for line in result.splitlines() if line.strip()]
+        lines.append(line)
     result = "\n".join(lines)
     return result.strip()
 
