@@ -1,4 +1,3 @@
-
 # plugins/auto_cleaner_channels.py
 # Auto Cleaner Channel / Group Management
 
@@ -52,7 +51,7 @@ def is_bot_admin(status):
 
 
 # Bot admin হওয়া চ্যাটের ID স্বয়ংক্রিয়ভাবে সংরক্ষণ
-@Client.on_chat_member_update()
+@Client.on_chat_member_updated()
 async def remember_chat(client, update):
     try:
         chat = update.chat
