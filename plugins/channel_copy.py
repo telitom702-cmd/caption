@@ -1016,6 +1016,12 @@ async def copy_callback(client, query):
     # Their buttons are currently hidden from the menus.
     # --------------------------------------------------------
     elif data == "cc_set_source":
+        try:
+            from plugins.channel_copy_setting import ADMIN_STATE as CHANNEL_SETTINGS_STATE
+            CHANNEL_SETTINGS_STATE.pop(query.from_user.id, None)
+        except ImportError:
+            pass
+        CLEANER_STATE.pop(query.from_user.id, None)
         ADMIN_STATE[query.from_user.id] = "source"
 
         await query.message.edit_text(
@@ -1030,6 +1036,12 @@ async def copy_callback(client, query):
         return
 
     elif data == "cc_set_target":
+        try:
+            from plugins.channel_copy_setting import ADMIN_STATE as CHANNEL_SETTINGS_STATE
+            CHANNEL_SETTINGS_STATE.pop(query.from_user.id, None)
+        except ImportError:
+            pass
+        CLEANER_STATE.pop(query.from_user.id, None)
         ADMIN_STATE[query.from_user.id] = "target"
 
         await query.message.edit_text(

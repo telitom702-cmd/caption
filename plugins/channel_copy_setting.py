@@ -24,6 +24,25 @@ SETTINGS_ID = "copy_settings"
 ADMIN_STATE = {}
 DELETE_ALL_CONFIRM = set()
 
+
+def clear_other_input_states(user_id):
+    """Keep one admin text-input flow active across plugins."""
+    cleared = False
+    try:
+        from plugins.auto_cleaner import CLEANER_STATE
+        cleared = CLEANER_STATE.pop(user_id, None) is not None or cleared
+    except ImportError:
+        pass
+
+    try:
+        from plugins.channel_copy import ADMIN_STATE as COPY_ADMIN_STATE
+        cleared = COPY_ADMIN_STATE.pop(user_id, None) is not None or cleared
+    except ImportError:
+        pass
+
+    return cleared
+
+
 DEFAULT_SETTINGS = {
     "enabled": False,
     "source_chat": None,
@@ -215,6 +234,7 @@ async def copy_setting_callback(client, query):
     uid = query.from_user.id
 
     if data in ("ccs_add_source", "ccs_change_source"):
+        clear_other_input_states(uid)
         ADMIN_STATE[uid] = "source"
         await query.message.edit_text(
             "📥 <b>Set Source Channel</b>\n\n"
@@ -227,6 +247,7 @@ async def copy_setting_callback(client, query):
         return
 
     if data in ("ccs_add_target", "ccs_change_target"):
+        clear_other_input_states(uid)
         ADMIN_STATE[uid] = "target"
         await query.message.edit_text(
             "📤 <b>Set Target Channel</b>\n\n"
@@ -392,10 +413,16 @@ async def copy_setting_cancel(client, message):
     if message.from_user.id not in ADMINS:
         return
 
-    ADMIN_STATE.pop(message.from_user.id, None)
-    DELETE_ALL_CONFIRM.discard(message.from_user.id)
+    user_id = message.from_user.id
+    had_active_state = ADMIN_STATE.pop(user_id, None) is not None
+    had_active_state = user_id in DELETE_ALL_CONFIRM or had_active_state
+    DELETE_ALL_CONFIRM.discard(user_id)
+    had_active_state = clear_other_input_states(user_id) or had_active_state
 
-    await message.reply_text("❌ Channel setup cancelled.")
+    if had_active_state:
+        await message.reply_text("❌ চলমান সেটআপ বাতিল করা হয়েছে।")
+    else:
+        await message.reply_text("ℹ️ বাতিল করার মতো কোনো চলমান সেটআপ নেই।")
 
 
 async def initialize_channel_copy_settings():
