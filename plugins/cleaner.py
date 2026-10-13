@@ -6,7 +6,7 @@ from pyrogram import filters
 from pyrogram.handlers import MessageHandler
 from pyrogram.errors import FloodWait, MessageNotModified
 
-from config import ADMINS
+from info import ADMINS
 from plugins.auto_cleaner import (
     is_enabled,
     get_settings,
