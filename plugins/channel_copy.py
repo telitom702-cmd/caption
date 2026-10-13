@@ -677,7 +677,7 @@ async def run_copy_system(client):
 # NEW SOURCE POST
 # ============================================================
 @Client.on_message(
-    filters.channel
+    (filters.channel | filters.group)
     & (
         filters.video
         | filters.document
@@ -1025,7 +1025,7 @@ async def copy_callback(client, query):
         ADMIN_STATE[query.from_user.id] = "source"
 
         await query.message.edit_text(
-            "📥 <b>Set Source Channel</b>\n\n"
+            "📥 <b>Set Source Channel / Group</b>\n\n"
             "এখন Source Channel-এর <b>@username</b> "
             "অথবা <b>Chat ID</b> পাঠান।\n\n"
             "উদাহরণ:\n<code>@mychannel</code>",
@@ -1045,7 +1045,7 @@ async def copy_callback(client, query):
         ADMIN_STATE[query.from_user.id] = "target"
 
         await query.message.edit_text(
-            "📤 <b>Set Target Channel</b>\n\n"
+            "📤 <b>Set Target Channel / Group</b>\n\n"
             "এখন Target Channel-এর <b>@username</b> "
             "অথবা <b>Chat ID</b> পাঠান।\n\n"
             "উদাহরণ:\n<code>@targetchannel</code>",
@@ -1279,9 +1279,13 @@ async def copy_admin_text_input(client, message):
     try:
         chat = await client.get_chat(value)
 
-        if chat.type != enums.ChatType.CHANNEL:
+        if chat.type not in (
+            enums.ChatType.CHANNEL,
+            enums.ChatType.GROUP,
+            enums.ChatType.SUPERGROUP,
+        ):
             await message.reply_text(
-                "❌ এটি Telegram Channel নয়।"
+                "❌ এটি Telegram Channel / Group নয়।"
             )
             return
 
