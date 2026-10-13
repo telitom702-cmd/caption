@@ -93,9 +93,9 @@ def parse_channel_id(value):
 
     # Accept numeric Telegram channel IDs only.
     # Do not accept @username or t.me links.
-    if not re.fullmatch(r"-100[0-9]+", value):
+    if not re.fullmatch(r"-[0-9]+", value):
         raise ValueError(
-            "শুধু Numeric Channel ID দিন। উদাহরণ: -1001234567890"
+            "শুধু Numeric Channel / Group ID দিন। উদাহরণ: -1001234567890"
         )
 
     return int(value)
@@ -104,8 +104,12 @@ def parse_channel_id(value):
 async def validate_channel(client, channel_id, role):
     chat = await client.get_chat(channel_id)
 
-    if chat.type != enums.ChatType.CHANNEL:
-        raise ValueError("এই Chat ID-টি Telegram Channel নয়।")
+    if chat.type not in (
+        enums.ChatType.CHANNEL,
+        enums.ChatType.GROUP,
+        enums.ChatType.SUPERGROUP,
+    ):
+        raise ValueError("এই Chat ID-টি Telegram Channel / Group নয়।")
 
     me = await client.get_me()
     member = await client.get_chat_member(chat.id, me.id)
@@ -117,15 +121,15 @@ async def validate_channel(client, channel_id, role):
 
     if member.status not in allowed_statuses:
         raise ValueError(
-            "বট এই Channel-এর Administrator নয়। "
+            "বট এই Channel / Group-এর Administrator নয়। "
             "আগে বটকে Admin হিসেবে যোগ করুন।"
         )
 
-    # Target requires permission to publish messages.
-    if role == "target":
+    # Channels need post permission; group administrators can send messages.
+    if role == "target" and chat.type == enums.ChatType.CHANNEL:
         if member.status != enums.ChatMemberStatus.OWNER:
             if not getattr(member, "privileges", None):
-                raise ValueError("Target Channel-এর Admin Permission যাচাই করা যায়নি।")
+                raise ValueError("Target Channel / Group-এর Admin Permission যাচাই করা যায়নি।")
 
             if not getattr(member.privileges, "can_post_messages", False):
                 raise ValueError(
@@ -237,7 +241,7 @@ async def copy_setting_callback(client, query):
         clear_other_input_states(uid)
         ADMIN_STATE[uid] = "source"
         await query.message.edit_text(
-            "📥 <b>Set Source Channel</b>\n\n"
+            "📥 <b>Set Source Channel / Group</b>\n\n"
             "শুধু Numeric Chat ID পাঠান।\n"
             "উদাহরণ: <code>-1001234567890</code>\n\n"
             "/cancel দিয়ে বাতিল করতে পারবেন।",
@@ -250,7 +254,7 @@ async def copy_setting_callback(client, query):
         clear_other_input_states(uid)
         ADMIN_STATE[uid] = "target"
         await query.message.edit_text(
-            "📤 <b>Set Target Channel</b>\n\n"
+            "📤 <b>Set Target Channel / Group</b>\n\n"
             "শুধু Numeric Chat ID পাঠান।\n"
             "উদাহরণ: <code>-1001234567890</code>\n\n"
             "/cancel দিয়ে বাতিল করতে পারবেন।",
