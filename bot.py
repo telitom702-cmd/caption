@@ -1,6 +1,9 @@
 import asyncio
+import importlib.util
 import logging
 import os
+import sys
+from importlib.machinery import SourceFileLoader
 
 from aiohttp import web
 from pyrogram import Client, idle
@@ -14,6 +17,30 @@ logging.basicConfig(
 
 LOGGER = logging.getLogger(__name__)
 app = None
+
+
+def load_existing_cleaner_plugin():
+    """Load the cleaner from its current extensionless file path."""
+    plugin_path = os.path.join(os.path.dirname(__file__), "plugins", "auto_cleaner")
+    if not os.path.isfile(plugin_path):
+        raise FileNotFoundError(f"Cleaner plugin file not found: {plugin_path}")
+
+    module_name = "plugins.auto_cleaner"
+    if module_name in sys.modules:
+        return
+
+    loader = SourceFileLoader(module_name, plugin_path)
+    spec = importlib.util.spec_from_loader(module_name, loader)
+    if spec is None:
+        raise ImportError(f"Could not load cleaner plugin from {plugin_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
 
 
 async def create_web_app():
@@ -61,6 +88,8 @@ async def start_bot():
         raise RuntimeError(
             "Missing required environment variables: " + ", ".join(missing)
         )
+
+    load_existing_cleaner_plugin()
 
     app = Client(
         SESSION,
