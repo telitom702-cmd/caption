@@ -14,7 +14,7 @@ from pyrogram.types import (
 )
 
 from plugins.database.database import db
-from config import Config
+from info import info
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ LOGGER = logging.getLogger(__name__)
 COLLECTION_NAME = "auto_cleaner"
 CLEANER_STATE = {}
 cleaner_col = db.db[COLLECTION_NAME]
-OWNER_ID = Config.OWNER_ID
+OWNER_ID = info.OWNER_ID
 
 # ============================================================
 # DEFAULT SETTINGS
