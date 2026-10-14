@@ -1,5 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from plugins.config import Config
+from .info import info
 
-client = AsyncIOMotorClient(Config.DATABASE_URL)
-db = client[Config.DATABASE_NAME]
+client = AsyncIOMotorClient(info.DATABASE_URL)
+db = client[info.DATABASE_NAME]
