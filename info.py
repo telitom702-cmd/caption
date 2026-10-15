@@ -1,6 +1,6 @@
 from os import environ
 
-SESSION = environ.get("SESSION", "DreamxBotz")
+SESSION = environ.get("SESSION", "DreamZBotz")
 API_ID = int(environ.get("API_ID", ""))
 API_HASH = environ.get("API_HASH", "")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
