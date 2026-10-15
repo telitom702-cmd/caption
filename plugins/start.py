@@ -7,7 +7,7 @@ from pyrogram.enums import ParseMode
 )
 async def start_command(client, message):
     await message.reply_text(
-        "🤖 <b>DreamxBotz is Running!</b>\n\n"
+        "🤖 <b>DreamZBotz is Running!</b>\n\n"
         "✅ Bot is online and working.\n"
         "🚀 Ready to receive your commands.",
         parse_mode=ParseMode.HTML
