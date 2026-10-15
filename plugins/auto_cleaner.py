@@ -221,7 +221,8 @@ async def cleaner_keyboard():
         [InlineKeyboardButton("🟢 Cleaner ON" if enabled else "🔴 Cleaner OFF", callback_data="ac_toggle")],
         [InlineKeyboardButton("🧹 Caption ON" if caption_enabled else "🚫 Caption OFF", callback_data="ac_caption")],
         [InlineKeyboardButton("➕ Add Text", callback_data="ac_add"), InlineKeyboardButton("➖ Delete Text", callback_data="ac_delete")],
-        [InlineKeyboardButton("🔄 Refresh", callback_data="ac_refresh")]
+        [InlineKeyboardButton("🔄 Refresh", callback_data="ac_refresh")],
+        [InlineKeyboardButton("❌ Close", callback_data="ac_close")]
     ])
 
 
@@ -254,6 +255,18 @@ async def cleaner_callback(client, query):
     user_id = query.from_user.id
     data = query.data
 
+    if data == "ac_close":
+        await query.answer()
+        try:
+            await query.message.delete()
+        except Exception:
+            LOGGER.exception("Failed to delete cleaner menu message")
+            try:
+                await query.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                LOGGER.exception("Failed to remove cleaner menu buttons")
+        return
+
     if data == "ac_toggle":
         settings = await get_settings()
         await update_settings({"enabled": not settings.get("enabled", False)})
@@ -279,6 +292,7 @@ async def cleaner_callback(client, query):
         
         buttons = [[InlineKeyboardButton(f"❌ {text[:30]}", callback_data=f"ac_del_{i}")] for i, text in enumerate(texts)]
         buttons.append([InlineKeyboardButton("🔙 Back", callback_data="ac_refresh")])
+        buttons.append([InlineKeyboardButton("❌ Close", callback_data="ac_close")])
         
         await query.message.edit_text("🗑 Select text to delete:", reply_markup=InlineKeyboardMarkup(buttons))
         await query.answer()
