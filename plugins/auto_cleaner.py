@@ -170,34 +170,36 @@ async def mark_processed(chat_id, message_id):
     )
 
 
-async def process_caption(message):
-    if not message.caption:
+async def process_post_text(message, remove_texts):
+    original_text = (
+        message.caption if message.caption is not None else message.text
+    )
+    if original_text is None or not remove_texts:
         return False
 
-    settings = await get_settings()
-    remove_texts = settings.get("remove_texts", [])
-    if not remove_texts:
-        return False
-
-    new_caption = clean_text(message.caption, remove_texts)
-    if new_caption == message.caption:
+    cleaned_text = clean_text(original_text, remove_texts)
+    if cleaned_text == original_text:
         return False
 
     try:
-        await message.edit_caption(caption=new_caption)
+        if message.caption is not None:
+            await message.edit_caption(caption=cleaned_text)
+        else:
+            await message.edit_text(text=cleaned_text)
         LOGGER.info(
-            "Caption cleaned: chat=%s message=%s",
+            "Post text cleaned: chat=%s message=%s",
             message.chat.id,
             message.id,
         )
         return True
     except Exception:
         LOGGER.exception(
-            "Caption edit failed: chat=%s message=%s",
+            "Post text edit failed: chat=%s message=%s",
             message.chat.id,
             message.id,
         )
-        return False
+        # None distinguishes an edit failure from a post that needed no edit.
+        return None
 
 
 async def process_message(message):
@@ -208,18 +210,22 @@ async def process_message(message):
     if await is_processed(message.chat.id, message.id):
         return
 
-    if not (message.video or message.document or message.audio):
+    if message.caption is None and message.text is None:
         return
 
     if settings.get("caption_cleaner", True):
-        await process_caption(message)
+        edit_result = await process_post_text(
+            message,
+            settings.get("remove_texts", []),
+        )
+        if edit_result is None:
+            # Do not mark failed edits as processed; a later update can retry.
+            return
 
     await mark_processed(message.chat.id, message.id)
 
 
-@Client.on_message(
-    filters.channel & (filters.video | filters.document | filters.audio)
-)
+@Client.on_message(filters.channel)
 async def auto_cleaner_channel_handler(client, message):
     try:
         await process_message(message)
@@ -799,14 +805,24 @@ async def render_scan_progress(chat_id, status="Running"):
 
     total = state["total"]
     scanned = state["scanned"]
-    percent = int(scanned * 100 / total) if total else (100 if status == "Completed" else 0)
-    filled = min(10, percent // 10)
-    bar = "█" * filled + "░" * (10 - filled)
+    if total or status == "Completed":
+        percent = int(scanned * 100 / total) if total else 100
+        filled = min(10, percent // 10)
+        bar = "█" * filled + "░" * (10 - filled)
+        progress_line = f"📊 <code>{bar}</code> {percent}%"
+        scanned_line = f"🔎 Scanned: <code>{scanned}/{total}</code>"
+    else:
+        # Telegram does not expose the full history size before iterating it.
+        # Show activity and the number handled instead of a misleading 0% bar.
+        filled = 1 + ((scanned // 5) % 9)
+        bar = "█" * filled + "░" * (10 - filled)
+        progress_line = f"📊 <code>{bar}</code> (মোট পোস্ট অজানা)"
+        scanned_line = f"🔎 Scanned: <code>{scanned}</code>"
 
     text = (
         "🧹 <b>Old Post Cleaner</b>\n\n"
-        f"📊 <code>{bar}</code> {percent}%\n"
-        f"🔎 Scanned: <code>{scanned}/{total}</code>\n"
+        f"{progress_line}\n"
+        f"{scanned_line}\n"
         f"✅ Cleaned: <code>{state['cleaned']}</code>\n"
         f"❌ Failed: <code>{state['failed']}</code>\n"
         f"⚙️ Status: <b>{escape(status)}</b>"
@@ -834,51 +850,69 @@ async def scan_old_posts(client, chat_id, pause_event):
     state = SCAN_PROGRESS[chat_id]
 
     try:
-        message_ids = []
-        async for post in client.get_chat_history(chat_id):
-            message_ids.append(post.id)
-
-        message_ids.sort()
-        state["total"] = len(message_ids)
         await render_scan_progress(chat_id, "Running")
 
-        for message_id in message_ids:
+        settings = await get_settings()
+        channel = await get_channel(chat_id)
+        if (
+            not settings.get("enabled", False)
+            or not channel
+            or not channel.get("enabled", True)
+        ):
+            await render_scan_progress(chat_id, "Stopped: Cleaner/Channel OFF")
+            return
+
+        remove_texts = settings.get("remove_texts", [])
+        caption_enabled = settings.get("caption_cleaner", True)
+
+        async for post in client.get_chat_history(chat_id):
             await pause_event.wait()
 
-            settings = await get_settings()
-            channel = await get_channel(chat_id)
-
-            if not settings.get("enabled", False) or not channel or not channel.get("enabled", True):
-                await render_scan_progress(chat_id, "Stopped: Cleaner/Channel OFF")
-                return
+            # Refresh mutable settings occasionally without making two database
+            # reads for every historical post.
+            if state["scanned"] and state["scanned"] % 10 == 0:
+                settings = await get_settings()
+                channel = await get_channel(chat_id)
+                if (
+                    not settings.get("enabled", False)
+                    or not channel
+                    or not channel.get("enabled", True)
+                ):
+                    await render_scan_progress(
+                        chat_id,
+                        "Stopped: Cleaner/Channel OFF",
+                    )
+                    return
+                remove_texts = settings.get("remove_texts", [])
+                caption_enabled = settings.get("caption_cleaner", True)
 
             try:
-                post = await client.get_messages(chat_id, message_id)
-                if post and (post.video or post.document or post.audio):
-                    settings = await get_settings()
-                    if settings.get("caption_cleaner", True) and post.caption:
-                        new_caption = clean_text(
-                            post.caption,
-                            settings.get("remove_texts", []),
-                        )
-                        if new_caption != post.caption:
-                            await post.edit_caption(caption=new_caption)
-                            state["cleaned"] += 1
+                if (
+                    post
+                    and caption_enabled
+                    and (post.caption is not None or post.text is not None)
+                ):
+                    result = await process_post_text(post, remove_texts)
+                    if result is True:
+                        state["cleaned"] += 1
+                    elif result is None:
+                        state["failed"] += 1
             except Exception:
                 state["failed"] += 1
                 LOGGER.exception(
                     "Old scan failed: chat=%s message=%s",
                     chat_id,
-                    message_id,
+                    getattr(post, "id", "unknown"),
                 )
 
             state["scanned"] += 1
-            if state["scanned"] % 10 == 0 or state["scanned"] == state["total"]:
+            if state["scanned"] % 10 == 0:
                 await render_scan_progress(
                     chat_id,
                     "Paused" if not pause_event.is_set() else "Running",
                 )
 
+        state["total"] = state["scanned"]
         await render_scan_progress(chat_id, "Completed")
 
     except asyncio.CancelledError:
