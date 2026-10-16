@@ -170,34 +170,36 @@ async def mark_processed(chat_id, message_id):
     )
 
 
-async def process_caption(message):
-    if not message.caption:
+async def process_post_text(message, remove_texts):
+    original_text = (
+        message.caption if message.caption is not None else message.text
+    )
+    if original_text is None or not remove_texts:
         return False
 
-    settings = await get_settings()
-    remove_texts = settings.get("remove_texts", [])
-    if not remove_texts:
-        return False
-
-    new_caption = clean_text(message.caption, remove_texts)
-    if new_caption == message.caption:
+    cleaned_text = clean_text(original_text, remove_texts)
+    if cleaned_text == original_text:
         return False
 
     try:
-        await message.edit_caption(caption=new_caption)
+        if message.caption is not None:
+            await message.edit_caption(caption=cleaned_text)
+        else:
+            await message.edit_text(text=cleaned_text)
         LOGGER.info(
-            "Caption cleaned: chat=%s message=%s",
+            "Post text cleaned: chat=%s message=%s",
             message.chat.id,
             message.id,
         )
         return True
     except Exception:
         LOGGER.exception(
-            "Caption edit failed: chat=%s message=%s",
+            "Post text edit failed: chat=%s message=%s",
             message.chat.id,
             message.id,
         )
-        return False
+        # None distinguishes an edit failure from a post that needed no edit.
+        return None
 
 
 async def process_message(message):
@@ -205,7 +207,6 @@ async def process_message(message):
     if not settings.get("enabled", False):
         return
 
-    # New posts are eligible only in channels explicitly saved and enabled.
     channel = await get_channel(message.chat.id)
     if not channel or not channel.get("enabled", True):
         return
@@ -213,18 +214,22 @@ async def process_message(message):
     if await is_processed(message.chat.id, message.id):
         return
 
-    if not (message.video or message.document or message.audio):
+    if message.caption is None and message.text is None:
         return
 
     if settings.get("caption_cleaner", True):
-        await process_caption(message)
+        edit_result = await process_post_text(
+            message,
+            settings.get("remove_texts", []),
+        )
+        if edit_result is None:
+            # Do not mark failed edits as processed; a later update can retry.
+            return
 
     await mark_processed(message.chat.id, message.id)
 
 
-@Client.on_message(
-    filters.channel & (filters.video | filters.document | filters.audio)
-)
+@Client.on_message(filters.channel)
 async def auto_cleaner_channel_handler(client, message):
     try:
         await process_message(message)
@@ -782,6 +787,21 @@ async def oldclean_command(client, message):
     await message.reply_text(summary)
 
 
+def safe_error_summary(error):
+    summary = str(error).replace("\r", " ").replace("\n", " ").strip()
+    summary = re.sub(
+        r"(?i)mongodb(?:\+srv)?://\S+",
+        "[database URI redacted]",
+        summary,
+    )
+    summary = re.sub(
+        r"\b\d{5,}:[A-Za-z0-9_-]{20,}\b",
+        "[token redacted]",
+        summary,
+    )
+    return summary[:180] or type(error).__name__
+
+
 async def render_scan_progress(chat_id, status="Running"):
     state = SCAN_PROGRESS.get(chat_id)
     if not state:
@@ -789,19 +809,30 @@ async def render_scan_progress(chat_id, status="Running"):
 
     total = state["total"]
     scanned = state["scanned"]
-    percent = int(scanned * 100 / total) if total else (100 if status == "Completed" else 0)
-    filled = min(10, percent // 10)
-    bar = "█" * filled + "░" * (10 - filled)
-    scanned_label = f"{scanned}/{total}" if total else f"{scanned} (মোট গণনা চলছে)"
+    if total or status == "Completed":
+        percent = int(scanned * 100 / total) if total else 100
+        filled = min(10, percent // 10)
+        bar = "█" * filled + "░" * (10 - filled)
+        progress_line = f"📊 <code>{bar}</code> {percent}%"
+        scanned_line = f"🔎 Scanned: <code>{scanned}/{total}</code>"
+    else:
+        # Telegram does not expose the full history size before iterating it.
+        # Show activity and the number handled instead of a misleading 0% bar.
+        filled = 1 + ((scanned // 5) % 9)
+        bar = "█" * filled + "░" * (10 - filled)
+        progress_line = f"📊 <code>{bar}</code> (মোট পোস্ট অজানা)"
+        scanned_line = f"🔎 Scanned: <code>{scanned}</code>"
 
     text = (
         "🧹 <b>Old Post Cleaner</b>\n\n"
-        f"📊 <code>{bar}</code> {percent}%\n"
-        f"🔎 Scanned: <code>{scanned_label}</code>\n"
+        f"{progress_line}\n"
+        f"{scanned_line}\n"
         f"✅ Cleaned: <code>{state['cleaned']}</code>\n"
         f"❌ Failed: <code>{state['failed']}</code>\n"
         f"⚙️ Status: <b>{escape(status)}</b>"
     )
+    if state.get("error"):
+        text += f"\n📝 Error: <code>{escape(state['error'])}</code>"
 
     keyboard = InlineKeyboardMarkup([
         [
@@ -833,26 +864,32 @@ async def scan_old_posts(client, chat_id, pause_event):
             settings = await get_settings()
             channel = await get_channel(chat_id)
 
-            if not settings.get("enabled", False) or not channel or not channel.get("enabled", True):
+            if (
+                not settings.get("enabled", False)
+                or not channel
+                or not channel.get("enabled", True)
+            ):
                 state["status"] = "Stopped: Cleaner/Channel OFF"
-                await render_scan_progress(chat_id, "Stopped: Cleaner/Channel OFF")
+                await render_scan_progress(
+                    chat_id,
+                    "Stopped: Cleaner/Channel OFF",
+                )
                 return
 
             try:
-                # Process history items directly: fetching each ID again made
-                # large backfills needlessly slow and could hit Telegram limits.
-                # Older posts may be photos, videos, documents, or other media;
-                # captions are the reliable eligibility check for caption edits.
-                if post and post.media and post.caption:
-                    settings = await get_settings()
-                    if settings.get("caption_cleaner", True) and post.caption:
-                        new_caption = clean_text(
-                            post.caption,
-                            settings.get("remove_texts", []),
-                        )
-                        if new_caption != post.caption:
-                            await post.edit_caption(caption=new_caption)
-                            state["cleaned"] += 1
+                if (
+                    post
+                    and settings.get("caption_cleaner", True)
+                    and (post.caption is not None or post.text is not None)
+                ):
+                    result = await process_post_text(
+                        post,
+                        settings.get("remove_texts", []),
+                    )
+                    if result is True:
+                        state["cleaned"] += 1
+                    elif result is None:
+                        state["failed"] += 1
             except Exception:
                 state["failed"] += 1
                 LOGGER.exception(
@@ -878,6 +915,7 @@ async def scan_old_posts(client, chat_id, pause_event):
         raise
     except Exception as exc:
         state["status"] = f"Failed: {type(exc).__name__}"
+        state["error"] = safe_error_summary(exc)
         LOGGER.exception("Old post scan failed for %s", chat_id)
         await render_scan_progress(chat_id, state["status"])
     finally:
@@ -896,6 +934,7 @@ async def oldclean_pause(client, query):
         return
 
     event.clear()
+    SCAN_PROGRESS.get(chat_id, {})["status"] = "Paused"
     await query.answer("স্ক্যান Pause করা হয়েছে।")
     await render_scan_progress(chat_id, "Paused")
 
@@ -911,6 +950,7 @@ async def oldclean_resume(client, query):
         return
 
     event.set()
+    SCAN_PROGRESS.get(chat_id, {})["status"] = "Running"
     await query.answer("স্ক্যান Resume করা হয়েছে।")
     await render_scan_progress(chat_id, "Running")
 
