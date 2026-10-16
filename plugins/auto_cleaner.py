@@ -205,6 +205,11 @@ async def process_message(message):
     if not settings.get("enabled", False):
         return
 
+    # New posts are eligible only in channels explicitly saved and enabled.
+    channel = await get_channel(message.chat.id)
+    if not channel or not channel.get("enabled", True):
+        return
+
     if await is_processed(message.chat.id, message.id):
         return
 
@@ -854,7 +859,9 @@ async def scan_old_posts(client, chat_id, pause_event):
 
             try:
                 post = await client.get_messages(chat_id, message_id)
-                if post and (post.video or post.document or post.audio):
+                # Older posts may be photos, videos, documents, or other media;
+                # captions are the reliable eligibility check for caption edits.
+                if post and post.media and post.caption:
                     settings = await get_settings()
                     if settings.get("caption_cleaner", True) and post.caption:
                         new_caption = clean_text(
