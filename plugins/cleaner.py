@@ -311,7 +311,7 @@ async def clean_channel_history(client, message, channel_id, title):
 
     try:
         # limit=0: উপলভ্য history সম্পূর্ণ স্ক্যান করার চেষ্টা
-        async for post in client.get_chat_history(channel_id, limit=0):
+        async for post in client.get_chat_history(channel_id, limit=None):
             scanned += 1
 
             # পোস্টের টেক্সট অথবা ক্যাপশন
