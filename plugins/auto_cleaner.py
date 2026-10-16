@@ -787,6 +787,21 @@ async def oldclean_command(client, message):
     await message.reply_text(summary)
 
 
+def safe_error_summary(error):
+    summary = str(error).replace("\r", " ").replace("\n", " ").strip()
+    summary = re.sub(
+        r"(?i)mongodb(?:\+srv)?://\S+",
+        "[database URI redacted]",
+        summary,
+    )
+    summary = re.sub(
+        r"\b\d{5,}:[A-Za-z0-9_-]{20,}\b",
+        "[token redacted]",
+        summary,
+    )
+    return summary[:180] or type(error).__name__
+
+
 async def render_scan_progress(chat_id, status="Running"):
     state = SCAN_PROGRESS.get(chat_id)
     if not state:
@@ -816,6 +831,8 @@ async def render_scan_progress(chat_id, status="Running"):
         f"❌ Failed: <code>{state['failed']}</code>\n"
         f"⚙️ Status: <b>{escape(status)}</b>"
     )
+    if state.get("error"):
+        text += f"\n📝 Error: <code>{escape(state['error'])}</code>"
 
     keyboard = InlineKeyboardMarkup([
         [
@@ -898,6 +915,7 @@ async def scan_old_posts(client, chat_id, pause_event):
         raise
     except Exception as exc:
         state["status"] = f"Failed: {type(exc).__name__}"
+        state["error"] = safe_error_summary(exc)
         LOGGER.exception("Old post scan failed for %s", chat_id)
         await render_scan_progress(chat_id, state["status"])
     finally:
