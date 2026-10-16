@@ -207,6 +207,10 @@ async def process_message(message):
     if not settings.get("enabled", False):
         return
 
+    channel = await get_channel(message.chat.id)
+    if not channel or not channel.get("enabled", True):
+        return
+
     if await is_processed(message.chat.id, message.id):
         return
 
@@ -708,63 +712,8 @@ async def oldclean_delete(client, query):
     filters.private & filters.command("clean") & filters.user(ADMINS)
 )
 async def oldclean_command(client, message):
-    CHANNEL_STATE[message.from_user.id] = {"action": "await_forward"}
-    await message.reply_text(
-        "🧹 <b>Old Post Cleaner</b>\n\n"
-        "যে সেভ করা চ্যানেল পরিষ্কার করতে চান, সেই চ্যানেলের একটি পোস্ট "
-        "source attribution-সহ ফরওয়ার্ড করুন।\n\n"
-        "চ্যানেলটি আগে Add Channel দিয়ে সেভ করা এবং ON থাকা বাধ্যতামূলক।\n"
-        "মূল Auto Cleaner-ও ON থাকতে হবে।\n"
-        "বাতিল করতে /cancel লিখুন।",
-        parse_mode=enums.ParseMode.HTML,
-    )
-
-
-def forwarded_channel(message):
-    source = getattr(message, "forward_from_chat", None)
-    if source:
-        return source
-
-    # Compatibility with Pyrogram versions that expose forward_origin.
-    origin = getattr(message, "forward_origin", None)
-    if origin:
-        origin_chat = getattr(origin, "chat", None)
-        if origin_chat:
-            return origin_chat
-    return None
-
-
-@Client.on_message(
-    filters.private & filters.forwarded & filters.user(ADMINS)
-)
-async def oldclean_forwarded(client, message):
-    user_id = message.from_user.id
-    state = CHANNEL_STATE.get(user_id)
-    if not isinstance(state, dict) or state.get("action") != "await_forward":
-        return
-
-    source = forwarded_channel(message)
-    if not source or getattr(source, "type", None) != enums.ChatType.CHANNEL:
-        await message.reply_text(
-            "❌ source attribution-সহ চ্যানেলের পোস্ট ফরওয়ার্ড করুন।"
-        )
-        return
-
-    chat_id = int(source.id)
-    channel = await get_channel(chat_id)
-
-    if not channel:
-        await message.reply_text(
-            "❌ এই চ্যানেল সেভ করা নেই। আগে /cleaner → Add Channel দিয়ে ID যোগ করুন।"
-        )
-        return
-
-    if not channel.get("enabled", True):
-        await message.reply_text(
-            "❌ Channel List-এ এই চ্যানেল OFF আছে। আগে ON করুন।"
-        )
-        return
-
+    # A manual cleanup covers only channels explicitly saved and ON in the
+    # cleaner's channel list. No forwarded post is needed to select them.
     settings = await get_settings()
     if not settings.get("enabled", False):
         await message.reply_text(
@@ -772,30 +721,70 @@ async def oldclean_forwarded(client, message):
         )
         return
 
-    CHANNEL_STATE.pop(user_id, None)
-
-    existing_task = SCAN_TASKS.get(chat_id)
-    if existing_task and not existing_task.done():
-        await message.reply_text("⚠️ এই চ্যানেলের স্ক্যান ইতিমধ্যে চলছে।")
+    channels = [
+        channel for channel in await get_channels()
+        if channel.get("enabled", True)
+    ]
+    if not channels:
+        await message.reply_text(
+            "📋 ক্লিন করার মতো কোনো সেভ করা ON চ্যানেল নেই। "
+            "/cleaner থেকে চ্যানেল যোগ করে ON করুন।"
+        )
         return
 
-    status_message = await message.reply_text(
-        "🔎 <b>পোস্টের তালিকা তৈরি হচ্ছে...</b>",
-        parse_mode=enums.ParseMode.HTML,
-    )
-    pause_event = asyncio.Event()
-    pause_event.set()
-    SCAN_PAUSE[chat_id] = pause_event
-    SCAN_PROGRESS[chat_id] = {
-        "total": 0,
-        "scanned": 0,
-        "cleaned": 0,
-        "failed": 0,
-        "message": status_message,
-    }
-    SCAN_TASKS[chat_id] = asyncio.create_task(
-        scan_old_posts(client, chat_id, pause_event)
-    )
+    started = []
+    already_running = []
+    for channel in channels:
+        try:
+            chat_id = int(channel["chat_id"])
+        except (KeyError, TypeError, ValueError):
+            LOGGER.warning(
+                "Skipping saved cleaner channel with invalid chat_id: %r",
+                channel,
+            )
+            continue
+
+        existing_task = SCAN_TASKS.get(chat_id)
+        if existing_task and not existing_task.done():
+            already_running.append(channel.get("title", str(chat_id)))
+            continue
+
+        title = escape(channel.get("title", str(chat_id)))
+        status_message = await message.reply_text(
+            f"🔎 <b>{title}</b>\nপুরোনো পোস্ট স্ক্যান শুরু হচ্ছে...",
+            parse_mode=enums.ParseMode.HTML,
+        )
+        pause_event = asyncio.Event()
+        pause_event.set()
+        SCAN_PAUSE[chat_id] = pause_event
+        SCAN_PROGRESS[chat_id] = {
+            "total": 0,
+            "scanned": 0,
+            "cleaned": 0,
+            "failed": 0,
+            "message": status_message,
+            "status": "Running",
+        }
+        SCAN_TASKS[chat_id] = asyncio.create_task(
+            scan_old_posts(client, chat_id, pause_event)
+        )
+        started.append(channel.get("title", str(chat_id)))
+
+    if not started:
+        if already_running:
+            await message.reply_text(
+                "⚠️ সেভ করা ON চ্যানেলগুলোর স্ক্যান ইতিমধ্যে চলছে।"
+            )
+        else:
+            await message.reply_text(
+                "❌ সেভ করা চ্যানেলের ID সঠিক পাওয়া যায়নি। Channel List দেখে নিন।"
+            )
+        return
+
+    summary = f"✅ {len(started)}টি সেভ করা ON চ্যানেলের পুরোনো পোস্ট স্ক্যান শুরু হয়েছে।"
+    if already_running:
+        summary += f"\n⏭️ {len(already_running)}টি চ্যানেলের স্ক্যান আগে থেকেই চলছে।"
+    await message.reply_text(summary)
 
 
 async def render_scan_progress(chat_id, status="Running"):
@@ -852,47 +841,34 @@ async def scan_old_posts(client, chat_id, pause_event):
     try:
         await render_scan_progress(chat_id, "Running")
 
-        settings = await get_settings()
-        channel = await get_channel(chat_id)
-        if (
-            not settings.get("enabled", False)
-            or not channel
-            or not channel.get("enabled", True)
-        ):
-            await render_scan_progress(chat_id, "Stopped: Cleaner/Channel OFF")
-            return
-
-        remove_texts = settings.get("remove_texts", [])
-        caption_enabled = settings.get("caption_cleaner", True)
-
         async for post in client.get_chat_history(chat_id):
             await pause_event.wait()
 
-            # Refresh mutable settings occasionally without making two database
-            # reads for every historical post.
-            if state["scanned"] and state["scanned"] % 10 == 0:
-                settings = await get_settings()
-                channel = await get_channel(chat_id)
-                if (
-                    not settings.get("enabled", False)
-                    or not channel
-                    or not channel.get("enabled", True)
-                ):
-                    await render_scan_progress(
-                        chat_id,
-                        "Stopped: Cleaner/Channel OFF",
-                    )
-                    return
-                remove_texts = settings.get("remove_texts", [])
-                caption_enabled = settings.get("caption_cleaner", True)
+            settings = await get_settings()
+            channel = await get_channel(chat_id)
+
+            if (
+                not settings.get("enabled", False)
+                or not channel
+                or not channel.get("enabled", True)
+            ):
+                state["status"] = "Stopped: Cleaner/Channel OFF"
+                await render_scan_progress(
+                    chat_id,
+                    "Stopped: Cleaner/Channel OFF",
+                )
+                return
 
             try:
                 if (
                     post
-                    and caption_enabled
+                    and settings.get("caption_cleaner", True)
                     and (post.caption is not None or post.text is not None)
                 ):
-                    result = await process_post_text(post, remove_texts)
+                    result = await process_post_text(
+                        post,
+                        settings.get("remove_texts", []),
+                    )
                     if result is True:
                         state["cleaned"] += 1
                     elif result is None:
@@ -913,14 +889,17 @@ async def scan_old_posts(client, chat_id, pause_event):
                 )
 
         state["total"] = state["scanned"]
+        state["status"] = "Completed"
         await render_scan_progress(chat_id, "Completed")
 
     except asyncio.CancelledError:
+        state["status"] = "Cancelled"
         await render_scan_progress(chat_id, "Cancelled")
         raise
-    except Exception:
+    except Exception as exc:
+        state["status"] = f"Failed: {type(exc).__name__}"
         LOGGER.exception("Old post scan failed for %s", chat_id)
-        await render_scan_progress(chat_id, "Failed")
+        await render_scan_progress(chat_id, state["status"])
     finally:
         SCAN_TASKS.pop(chat_id, None)
         SCAN_PAUSE.pop(chat_id, None)
@@ -937,6 +916,7 @@ async def oldclean_pause(client, query):
         return
 
     event.clear()
+    SCAN_PROGRESS.get(chat_id, {})["status"] = "Paused"
     await query.answer("স্ক্যান Pause করা হয়েছে।")
     await render_scan_progress(chat_id, "Paused")
 
@@ -952,6 +932,7 @@ async def oldclean_resume(client, query):
         return
 
     event.set()
+    SCAN_PROGRESS.get(chat_id, {})["status"] = "Running"
     await query.answer("স্ক্যান Resume করা হয়েছে।")
     await render_scan_progress(chat_id, "Running")
 
@@ -966,6 +947,6 @@ async def oldclean_progress(client, query):
     event = SCAN_PAUSE.get(chat_id)
     status = "Paused" if event and not event.is_set() else "Running"
     if chat_id not in SCAN_TASKS:
-        status = "Completed"
+        status = SCAN_PROGRESS.get(chat_id, {}).get("status", "Completed")
 
     await render_scan_progress(chat_id, status)
