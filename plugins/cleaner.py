@@ -281,6 +281,17 @@ async def clean_channel_history(client, message, channel_id, title):
         await message.reply_text("⚠️ এই চ্যানেলের ক্লিনিং চলছে।")
         return
 
+    history_client = getattr(client, "history_client", None)
+    if history_client is None:
+        await message.reply_text(
+            "❌ Telegram bot পুরোনো channel history পড়তে পারে না.\n\n"
+            "পুরোনো পোস্ট clean করতে hosting environment-এ "
+            "`HISTORY_SESSION` secret হিসেবে একটি Pyrogram user session দিন। "
+            "ওই user account-কে channel-এ যুক্ত থাকতে হবে; post edit করবে আগের bot।",
+            parse_mode=enums.ParseMode.MARKDOWN,
+        )
+        return
+
     settings = await get_settings()
     channel_entry = next(
         (
@@ -311,7 +322,7 @@ async def clean_channel_history(client, message, channel_id, title):
 
     try:
         # limit=0: উপলভ্য history সম্পূর্ণ স্ক্যান করার চেষ্টা
-        async for post in client.get_chat_history(channel_id, limit=None):
+        async for post in history_client.get_chat_history(channel_id, limit=None):
             scanned += 1
 
             # পোস্টের টেক্সট অথবা ক্যাপশন
