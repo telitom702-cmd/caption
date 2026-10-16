@@ -71,9 +71,45 @@ async def start_bot():
         workdir=".",
     )
 
+    history_client = None
     runner = None
     app_started = False
     try:
+        app.history_client = None
+        history_session = os.environ.get("HISTORY_SESSION", "").strip()
+        if history_session:
+            try:
+                history_client = Client(
+                    "history_reader",
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                    session_string=history_session,
+                    workdir=".",
+                )
+                await history_client.start()
+                if (await history_client.get_me()).is_bot:
+                    raise RuntimeError(
+                        "HISTORY_SESSION must belong to a Telegram user"
+                    )
+                app.history_client = history_client
+                LOGGER.info("Telegram history reader started")
+            except Exception:
+                LOGGER.exception(
+                    "History reader could not start; old-post cleaning "
+                    "is unavailable"
+                )
+                if history_client is not None:
+                    try:
+                        await history_client.stop()
+                    except Exception:
+                        pass
+                history_client = None
+        else:
+            LOGGER.warning(
+                "HISTORY_SESSION is not configured; old-post cleaning "
+                "requires a Telegram user session"
+            )
+
         await app.start()
         app_started = True
         bot_info = await app.get_me()
@@ -89,6 +125,11 @@ async def start_bot():
                 await runner.cleanup()
             except Exception:
                 LOGGER.exception("Web server cleanup failed")
+        if history_client is not None:
+            try:
+                await history_client.stop()
+            except Exception:
+                LOGGER.exception("History reader stop failed")
         if app_started:
             try:
                 await app.stop()
