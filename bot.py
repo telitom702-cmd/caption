@@ -5,7 +5,15 @@ import os
 from aiohttp import web
 from pyrogram import Client, idle
 
-from info import API_ID, API_HASH, BOT_TOKEN, DATABASE_URI, SESSION
+from info import (
+    ADMINS,
+    API_ID,
+    API_HASH,
+    BOT_TOKEN,
+    DATABASE_URI,
+    HISTORY_SESSION,
+    SESSION,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +65,8 @@ async def start_bot():
         missing.append("BOT_TOKEN")
     if not DATABASE_URI:
         missing.append("DATABASE_URI")
+    if not ADMINS:
+        missing.append("ADMINS")
     if missing:
         raise RuntimeError(
             "Missing required environment variables: " + ", ".join(missing)
@@ -76,7 +86,7 @@ async def start_bot():
     app_started = False
     try:
         app.history_client = None
-        history_session = os.environ.get("HISTORY_SESSION", "").strip()
+        history_session = HISTORY_SESSION
         if history_session:
             try:
                 history_client = Client(
