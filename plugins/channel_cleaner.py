@@ -593,7 +593,7 @@ async def clean_channel_history(client, message, channel_id, title):
             final_text = (
                 f"🛑 **Cleaning Stopped**\n\n"
                 f"📡 Channel: {title}\n"
-                f"🔎 Checked: `{scaned}`\n"
+                f"🔎 Checked: `{scanned}`\n"
                 f"🧹 Cleaned: `{edited}`\n"
                 f"⚠️ Failed: `{skipped}`"
             )
